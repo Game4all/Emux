@@ -35,8 +35,9 @@ namespace Emux.GameBoy
 
 		/// <summary>
 		/// Occurs when the process has completely shut down.
+		/// Also gets called if the emulation process terminates abnormally (ie: an exception was thrown somewhere)
 		/// </summary>
-		public event EventHandler Terminated;
+		public event EventHandler<TerminationEventArgs> Terminated;
 
 		public event StepEventHandler PerformedStep;
 
@@ -216,45 +217,52 @@ namespace Emux.GameBoy
 
 		private void CpuLoop()
 		{
-			bool enabled = true;
-			while (enabled)
+			try
 			{
-				if (WaitHandle.WaitAny(new WaitHandle[] { _continueSignal, _terminateSignal }) == 1)
+				bool enabled = true;
+				while (enabled)
 				{
-					enabled = false;
-				}
-				else
-				{
-					Cpu.Running = true;
-					_continueSignal.Reset();
-					OnResumed();
-
-					int cycles = 0;
-					do
+					if (WaitHandle.WaitAny(new WaitHandle[] { _continueSignal, _terminateSignal }) == 1)
 					{
-						cycles += Cpu.PerformNextInstruction();
-						if (cycles >= GameBoyGpu.FullFrameCycles * Cpu.SpeedMultiplier)
+						enabled = false;
+					}
+					else
+					{
+						Cpu.Running = true;
+						_continueSignal.Reset();
+						OnResumed();
+
+						int cycles = 0;
+						do
 						{
-							Spu.SpuStep(cycles / Cpu.SpeedMultiplier);
-							cycles -= GameBoyGpu.FullFrameCycles * Cpu.SpeedMultiplier;
-							if (EnableFrameLimit)
+							cycles += Cpu.PerformNextInstruction();
+							if (cycles >= GameBoyGpu.FullFrameCycles * Cpu.SpeedMultiplier)
 							{
-								WaitHandle.WaitAny(new WaitHandle[] { _breakSignal, _frameStartSignal });
-								_frameStartSignal.Reset();
+								Spu.SpuStep(cycles / Cpu.SpeedMultiplier);
+								cycles -= GameBoyGpu.FullFrameCycles * Cpu.SpeedMultiplier;
+								if (EnableFrameLimit)
+								{
+									WaitHandle.WaitAny(new WaitHandle[] { _breakSignal, _frameStartSignal });
+									_frameStartSignal.Reset();
+								}
 							}
-						}
 
-						if (_breakpoints.TryGetValue(Cpu.Registers.PC, out var breakpoint) && breakpoint.Condition(Cpu))
-							Cpu.IsBroken = true;
+							if (_breakpoints.TryGetValue(Cpu.Registers.PC, out var breakpoint) && breakpoint.Condition(Cpu))
+								Cpu.IsBroken = true;
 
-					} while (!Cpu.IsBroken);
+						} while (!Cpu.IsBroken);
 
-					_breakSignal.Reset();
-					Cpu.Running = false;
-					OnPaused();
+						_breakSignal.Reset();
+						Cpu.Running = false;
+						OnPaused();
+					}
 				}
-			}
-			OnTerminated();
+				OnTerminated(new TerminationEventArgs());
+			} 
+			catch (Exception e)
+            {
+				OnTerminated(new TerminationEventArgs(e));
+            }
 		}
 
 		protected virtual void OnResumed()
@@ -267,9 +275,9 @@ namespace Emux.GameBoy
 			Paused?.Invoke(this, EventArgs.Empty);
 		}
 
-		protected virtual void OnTerminated()
+		protected virtual void OnTerminated(TerminationEventArgs args)
 		{
-			Terminated?.Invoke(this, EventArgs.Empty);
+			Terminated?.Invoke(this, args);
 		}
 
 		protected virtual void OnPerformedStep(StepEventArgs args)
@@ -328,6 +336,21 @@ namespace Emux.GameBoy
             foreach (var component in Components)
                 component.Shutdown();
             IsPoweredOn = false;
+        }
+
+		public class TerminationEventArgs : EventArgs
+        {
+			public TerminationEventArgs(Exception e)
+            {
+            }
+
+			public TerminationEventArgs() : this(null)
+            {
+            }
+
+			public readonly Exception Exception;
+
+			public bool Crashed => Exception != null ? true : false;
         }
 
 		public void Dispose()
