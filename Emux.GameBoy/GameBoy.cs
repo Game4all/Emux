@@ -14,7 +14,7 @@ namespace Emux.GameBoy
     /// <summary>
     /// Represents an emulated game boy device. This includes the processor chip, the graphics chip, the memory controller 
     /// </summary>
-    public class GameBoy
+    public class GameBoy : IDisposable
     {
 		public const float OfficialFrameRate = 59.7f;
 
@@ -328,6 +328,11 @@ namespace Emux.GameBoy
             foreach (var component in Components)
                 component.Shutdown();
             IsPoweredOn = false;
+        }
+
+		public void Dispose()
+        {
+			(Cartridge as IFullyAccessibleCartridge)?.ExternalMemory?.Dispose();
         }
 	}
 }
