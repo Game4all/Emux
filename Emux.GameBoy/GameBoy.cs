@@ -342,6 +342,7 @@ namespace Emux.GameBoy
         {
 			public TerminationEventArgs(Exception e)
             {
+				Exception = e;
             }
 
 			public TerminationEventArgs() : this(null)
@@ -350,7 +351,7 @@ namespace Emux.GameBoy
 
 			public readonly Exception Exception;
 
-			public bool Crashed => Exception != null ? true : false;
+			public bool Crashed => Exception != null;
         }
 
 		public void Dispose()
