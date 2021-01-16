@@ -242,7 +242,12 @@ namespace Emux.GameBoy
 								cycles -= GameBoyGpu.FullFrameCycles * Cpu.SpeedMultiplier;
 								if (EnableFrameLimit)
 								{
-									WaitHandle.WaitAny(new WaitHandle[] { _breakSignal, _frameStartSignal });
+									var handle = WaitHandle.WaitAny(new WaitHandle[] { _breakSignal, _frameStartSignal, _terminateSignal });
+									if (handle == 2) // handle termination signal when the CPU is running
+                                    {
+										enabled = false;
+										break;
+                                    }
 									_frameStartSignal.Reset();
 								}
 							}
@@ -331,6 +336,7 @@ namespace Emux.GameBoy
         /// </summary>
         public void Terminate()
         {
+			_terminateSignal.Set();
 			_clock.Stop();
 
             foreach (var component in Components)
@@ -356,6 +362,7 @@ namespace Emux.GameBoy
 
 		public void Dispose()
         {
+			Terminate();
 			(Cartridge as IFullyAccessibleCartridge)?.ExternalMemory?.Dispose();
         }
 	}
